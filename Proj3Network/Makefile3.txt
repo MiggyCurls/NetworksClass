@@ -1,0 +1,93 @@
+#
+# makefile for ttftp
+# last-update:
+#    3 march 2022 -bjr
+# 
+
+HOST= localhost
+PORT= 3333
+FLAGS= -v
+S_FLAGS=
+C_FLAGS=
+FILE= hello.txt
+DR= /dev/random
+
+
+CC = gcc
+
+RED= \033[0;31m
+GREEN= \033[0;32m
+NC= \033[0m
+
+all:
+        @echo
+        @echo "*** Targets: "
+        @echo "***     ${GREEN}build, clean, basic-test${NC}"
+        @echo "***     ${GREEN}run-client ${RED}HOST=${HOST} PORT=${PORT} FILE=${FILE}${NC}"
+        @echo "***     ${GREEN}run-server ${RED}PORT=${PORT}${NC}"
+        @echo
+
+build: 
+        make ttftp
+        make ttftpd
+
+ttftp: ttftp.c ttftp-client.o foo-socket.o ttftp.h
+        cc ${COPTS} -o $@ $< ttftp-client.o foo-socket.o
+
+ttftpd: ttftpd.c ttftp-server.o foo-socket.o ttftp.h
+        ${CC} -o $@ $< ttftp-server.o foo-socket.o
+
+ttftp-server.o: ttftp-server.c ttftp.h foo-socket.h
+        cc ${COPTS} -c -o $@ $<
+
+ttftp-client.o: ttftp-client.c ttftp.h foo-socket.h
+        cc ${COPTS} -c -o $@ $<
+
+foo-socket.o: foo-socket.c foo-socket.h
+        cc -c -o $@ $<
+
+run-server: ttftpd
+        echo "The date is: `date` !" > ${FILE}
+        ./ttftpd ${S_FLAGS} ${FLAGS} ${PORT}
+
+run-client: ttftp
+        ./ttftp ${C_FLAGS} ${FLAGS} ${HOST}:${PORT} ${FILE}
+
+basic-test: ttftp ttftpd
+        echo "The date is: `date` !" > ${FILE}
+        ./ttftpd ${S_FLAGS} -L ${FLAGS} ${PORT} &
+        ./ttftp localhost:${PORT} ${FILE} > ${FILE}.out
+        diff ${FILE} ${FILE}.out
+        @echo "***\n*** ${GREEN}PASSES basic test${NC}\n***"
+        rm ${FILE}.out
+
+random-test: ttftp ttftpd
+        dd if=${DR} bs=1 count=127 > ${FILE}
+        ./ttftpd ${S_FLAGS} -L ${FLAGS} ${PORT} &
+        ./ttftp localhost:${PORT} ${FILE} > ${FILE}.out
+        cmp ${FILE} ${FILE}.out
+        @echo "***\n*** ${GREEN}PASSES random test 127 bytes${NC}\n***"
+        dd if=${DR} bs=1 count=128 > ${FILE}
+        ./ttftpd ${S_FLAGS} -L ${FLAGS} ${PORT} &
+        ./ttftp localhost:${PORT} ${FILE} > ${FILE}.out
+        cmp ${FILE} ${FILE}.out
+        @echo "***\n*** ${GREEN}PASSES random test 128 bytes${NC}\n***"
+        dd if=${DR} bs=1 count=129 > ${FILE}
+        ./ttftpd ${S_FLAGS} -L ${FLAGS} ${PORT} &
+        ./ttftp localhost:${PORT} ${FILE} > ${FILE}.out
+        cmp ${FILE} ${FILE}.out
+        @echo "***\n*** ${GREEN}PASSES random test 129 bytes${NC}\n***"
+        rm ${FILE} ${FILE}.out
+
+tcpdump:
+        sudo tcpdump -i lo -X udp
+
+find-pid:
+        @echo problem- bind: Address already in use
+        @echo use netstat to find the pid holding the port then kill -9
+        @echo might need apt-get install net-tools 
+        netstat -tulpn | grep ${PORT}
+
+clean:
+        -rm ttftp ttftpd ttftp-server.o ttftp-client.o foo-socket.o
+        -rm ${FILE} ${FILE}.out

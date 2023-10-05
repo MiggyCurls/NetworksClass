@@ -1,0 +1,133 @@
+/*
+** name: ttftp-server.c
+**
+** implements server logic for the ttftp protocol
+**
+** last modified:
+**              31 jan 2015 -bjr; created: 
+**              14 feb 2016 -bjr; csc424.162 modifications
+**               3 mar 2022 -bjr; csc424.222 modifications
+**       7 mar 2022 -bjr; reduced to template
+**
+*/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<errno.h>
+#include<string.h>
+#include<fcntl.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
+#include<netdb.h>
+#include<assert.h>
+#include<unistd.h>
+
+#include "ttftp.h"
+#include "foo-socket.h"
+
+#define quarter 2
+#define half 4
+char * get_filename(char * buf){return (buf+quarter);}
+int get_block_count(char * buf){return (int) ntohs(*((short *) (buf + quarter)));}
+
+int make_data(char * buf, unsigned int buf_len, int block_number, char * data, int data_len){
+        assert(buf_len >= (data_len +half));
+        *((short *)buf) = htons(TFTP_DATA);
+        *((short *) (buf+quarter)) = htons((short)block_number);
+        memcpy(buf+half, data, data_len);
+        return data_len+half;
+}
+struct FooSocket * create_session_socket(struct FooSocket * sock_listen) {
+        struct FooSocket * sock_session ;
+        struct sockaddr_in sa_i;
+
+        // create an ephemeral socket, this is to take care of the 
+        // DATA and ACK packets, for this particular transer TID
+
+        sock_session = create_foo_socket(0) ;
+        assert(sock_session) ;
+
+        // copy over the reply to from the sock_listen to the sock_session.
+        // you must really do a dup on the address structure, because the next
+        // use of sock_listen will overwrite the information in that structure
+
+        sock_session->replyto_addr = (struct sockaddr_in *) malloc(sizeof(struct sockaddr_in));
+        memcpy(sock_session->replyto_addr, sock_listen->replyto_addr, sizeof(struct sockaddr_in));
+        // to do
+
+
+        return sock_session ;
+}
+int  ttftp_server( int listen_port, char * secret, int is_noloop ) {
+
+        struct FooSocket * sock_session ;
+        struct FooSocket * sock_listen ;
+        unsigned int numbytes ;
+        char buf[MAXMSGLEN] ; 
+        unsigned int buf_len = sizeof(buf) ;
+        char * filename;
+        FILE * rrq_file;
+        IF_VERBOSE {
+                        printf("Line %d: server loop entered\n", __LINE__ ) ;
+                        printf("Line %d: listening on port %d\n",__LINE__,listen_port) ;
+        }
+
+        // you will need to implement this, in foo-socket.h 
+        sock_listen = create_foo_socket(listen_port) ;
+        assert(sock_listen) ;
+
+        do {
+
+                // this is the main server loop; 
+                // the child is inside the if (!fork()) block.
+
+                // parent:
+                // 1) receive from sock_listen
+                // 2) fork a child to handle the data stransfer
+ 
+                numbytes = socket_recvfrom( sock_listen, buf, buf_len);
+                assert(numbytes>=0) ;
+                filename = get_filename(buf);
+                rrq_file = fopen(filename, "r");
+
+                 if ( !fork() ) {
+                        // child
+                        char data[TFTP_DATALEN];
+                        unsigned int bytes_read;
+                        int block_number;
+                        // create a session socekt
+                        sock_session = create_session_socket(sock_listen) ;
+
+                        // 1) check that the packet is a TFTP_RRQ
+                        // 2) get the filename, check if safe, and open the file
+                        // 3) start of data send loop
+                        //    a) read up to TFTP_DATALEN bytes from the file
+                        //    b) send the bytes in a DATA packet with correct block number
+                        //    c) get the ACK packet, and verify block number
+                        //    d) if less than TFT_DATALEN bytes send, exit
+                        // 4) end of data send loop
+                        //
+                        block_number = 1;
+                        while(block_number){
+                                bytes_read = fread(data, 1, TFTP_DATALEN, rrq_file);
+                                numbytes = make_data(buf, buf_len, block_number, data, bytes_read);
+                                numbytes = socket_replyto(sock_session, buf, numbytes);
+
+                                numbytes = socket_recvfrom(sock_session, buf, buf_len);
+                                if(get_block_count(buf) != block_number) IF_VERBOSE printf("(%s, %d): block expected: %d, block received: %d\n", __FILE__, __LINE__, block_number, get_block_count(buf));
+                                block_number++;
+                                if(bytes_read < TFTP_DATALEN) block_number = 0;
+                        }
+
+                        return 0 ; // end of child
+                        assert(0==1) ; 
+                }
+        } while (!is_noloop) ;
+    
+    IF_VERBOSE printf("goodbye\n") ; 
+        return 0 ;
+}
+
+// END

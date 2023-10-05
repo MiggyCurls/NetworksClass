@@ -1,0 +1,102 @@
+/*
+** name: ttftp-client.c
+**
+** implements client logic for the ttftp protocol
+**
+** last modified:
+**              31 jan 2015 -bjr; created: 
+**              14 feb 2016 -bjr; csc424.162 modifications
+**               7 mar 2022 -bjr; reduced to template
+**
+*/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<errno.h>
+#include<string.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
+#include<netdb.h>
+#include<assert.h>
+#include<unistd.h>
+
+#include "ttftp.h"
+#include "foo-socket.h"
+
+#define quarter 2
+#define half 4
+int make_rrq(char * buf, unsigned int buf_len, char * file ) {
+
+        // make a RRQ packet and return the length
+        *((short *) buf) = htons((short) TFTP_RRQ);
+        strcpy(buf + quarter, file);
+        strcpy(buf + (strlen(file) + 3), TFTP_MODE);
+
+
+        return strlen(file) + strlen(TFTP_MODE) + half;
+}
+
+int make_ack( char * buf, unsigned int buf_len, int block_count ) {
+        assert(buf_len >= half);
+        // make a ACK packet and return the length
+        *((short *) buf) = htons(TFTP_ACK);
+        *((short *) (buf + quarter)) = htons((short) block_count);
+        return half;
+}
+int get_opcode(char * buf){ return (int) ntohs(*((short *) buf));}
+int get_block_count(char * buf){ return (int) ntohs(*((short *) (buf + quarter)));}
+int  ttftp_client( char * to_host, int to_port, char * secret, char * file ) {
+
+        struct FooSocket * sock_c ;
+        char buf[MAXMSGLEN] ;
+        unsigned int buf_len = sizeof(buf) ;
+        unsigned int numbytes, msgsize ;
+        int block_count ; 
+
+    IF_VERBOSE printf("Line %d(%s): client loop entered\n", __LINE__,  __FILE__ ) ;
+
+        sock_c = create_foo_socket(0) ;
+        assert(sock_c) ;
+
+        msgsize = make_rrq(buf, buf_len, file ) ;
+        numbytes = socket_sendto(sock_c, to_host, to_port, buf, msgsize) ;
+        assert(numbytes>=0) ;
+
+        block_count = 1 ; /* number of the expected block */
+        while ( block_count ) {
+
+                // this is the client loop; 
+                // 1) call socket_recfrom on the client socket sock_c
+                // 2) check that the opcode of the packet equals TFTP_DATA
+                // 3) get and check the block number; output the bytes
+                // 4) send an ACK for this block
+                // 5) if this is the last block, set block_count to zero.
+
+                int data_len;
+
+                numbytes = socket_recvfrom(sock_c, buf, buf_len);
+                data_len = numbytes - half;
+                assert(get_opcode(buf) == TFTP_DATA);
+                assert(get_block_count(buf) == block_count);
+
+                write(fileno(stdout), buf+half, data_len);
+
+                numbytes = make_ack(buf, buf_len, block_count);
+                numbytes = socket_replyto(sock_c, buf, buf_len);
+
+                if(data_len < TFTP_DATALEN){
+                        block_count = 0;
+                }else{
+                        block_count++;
+                }
+
+
+        }
+
+        IF_VERBOSE printf("client says goodbye\n") ; 
+        return 0 ;
+}
+
+// END

@@ -1,0 +1,92 @@
+/*
+** name: ttftp.c
+** 
+** main code for the ttftp client.c
+**
+** last modified:
+**              31 jan 2015 -bjr; created
+**              14 feb 2016 -bjr; csc424.162 modifications
+**              01 may 2017 -bjr; added packet dropping code 
+**              02 mar 2022 -bjr; split into client code and server code
+**
+*/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<errno.h>
+#include<string.h>
+#include<fcntl.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
+#include<netdb.h>
+#include<assert.h>
+#include<unistd.h>
+
+#include "ttftp.h"
+
+#define USAGE_MESSAGE "usage: ttftp [-v][-s secret] hostname:port filename]"
+
+int verbose_g ;
+int debug_g ;
+
+char * parse_hostname(char * name) {
+        char * h  ;
+        h = strtok(name,":") ;
+        return strdup(h) ;
+}
+
+int parse_port(char * name, int def_value ) {
+        char * h  ;
+        h = strtok(name,":") ;
+        h = strtok(NULL,":") ;
+        if (!h) return def_value ;
+        return atoi(h) ;
+}
+
+int main(int argc, char * argv[]) {
+        int ch ;
+        int is_server = 0 ;
+        int port = 0 ; 
+        int is_noloop = 0 ; 
+        char * hostname = NULL ;
+        char * filename = NULL ;
+        char * secret = NULL ;
+
+        secret = strdup(DEFAULT_SECRET) ;
+
+        while ((ch = getopt(argc, argv, "vS:")) != -1) {
+                switch(ch) {
+                case 'v':
+                        verbose_g ++ ;
+                        break ;
+                case 's':
+                        secret = strdup(optarg) ;
+                        break ;
+                case '?':
+                default:
+                        printf("%s\n",USAGE_MESSAGE) ;
+                        return 0 ;
+                }
+        }
+        argc -= optind;
+    argv += optind;
+      
+    if ( argc!= 2 ) {
+        fprintf(stderr,"%s\n",USAGE_MESSAGE) ;
+        exit(0) ;
+    }
+
+        hostname = parse_hostname(argv[0]) ;
+        port = parse_port(argv[0], DEFAULT_PORT) ;
+    filename = strdup(argv[1]) ;
+
+        // check whether we can use short as the data type for 2 byte int's
+        assert(sizeof(short)==2) ;
+
+        return ttftp_client( hostname, port, secret, filename ) ;
+}
+
+// END
+

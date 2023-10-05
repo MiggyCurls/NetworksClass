@@ -1,0 +1,67 @@
+/*
+** name: ttftp.h
+**
+** author: bjr
+** created: 31 jan 2015 by bjr
+** last modified:
+**              14 feb 2016, for 162 semester of csc424 -bjr 
+**              3 march 2022, for csc424.222
+**              27 feb 2023, for csc424.232
+*/
+
+#include "foo-socket.h"
+
+#ifndef TTFTP_H
+#define TTFTP_H
+
+extern int verbose_g ;
+extern int debug_g ;
+
+#define IF_VERBOSE if (verbose_g>0) 
+
+#define TFTP_RRQ 1
+#define TFTP_WRQ 2
+#define TFTP_DATA 3
+#define TFTP_ACK 4
+#define TFTP_ERR 5
+
+#define TFTP_ERR_UNKN 0
+#define TFTP_ERR_FNF 1
+#define TFTP_ERR_ILLG 4
+
+#define DEFAULT_PORT 3333
+#define DEFAULT_SECRET "octet"
+#define TFTP_DATALEN 128
+#define TFTP_MODE "authenticate"
+
+
+#define MAXMSGLEN 2048
+#define MAXFILENAMELEN 256
+#define VAR_SIZE 0 
+
+struct TftpReq {
+        char opcode[2] ;
+        char filename_and_authenticator[VAR_SIZE] ;
+} ;
+
+struct TftpData {
+        char opcode[2] ;
+        char block_num[2] ;
+        char data[VAR_SIZE] ;
+} ;
+
+struct TftpAck {
+        char opcode[2] ;
+        char block_num[2] ;
+} ;
+
+struct TftpError {
+        char opcode[2] ;
+        char error_code[2] ;
+        char error_msg[VAR_SIZE] ;
+} ;
+
+int ttftp_client( char * host, int port, char * secret, char * file ) ;
+int ttftp_server( int listen_port, char * secret, int is_noloop ) ;
+
+#endif  /* TTFTP_H */
