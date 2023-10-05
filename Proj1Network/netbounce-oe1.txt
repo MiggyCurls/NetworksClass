@@ -1,0 +1,102 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<errno.h>
+#include<string.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
+#include<assert.h>
+
+#include "foo-socket.h"
+
+/*
+ * netbound-oe.c - netbounce object edition
+ * csc424 (222)
+ *
+ * last-update:
+ *              27 jan 2022 -bjr;
+ *
+ */
+
+
+#define MAXBUFLEN 100
+#define USAGE_MSG "usage: %s [-v] [-l] [-p port] [-h host message]\n"
+#define PROG_NAME "netbound-oe"  
+ 
+int verbose_g = 0 ;
+
+int main(int argc, char * argv[]) {
+
+        int ch ;
+        int port = 0 ;
+        int is_loop = 0 ;
+        int is_server = 0 ;
+        char * host ;
+        char * message ;
+        char buf[MAXBUFLEN];
+        unsigned int buf_size = sizeof(buf)/sizeof(char) ;
+        int n ;
+        struct FooSocket * sock ;
+
+        while ((ch = getopt(argc, argv, "vslp:h:")) != -1) {
+                switch(ch) {
+                        case 'h':
+                                host = strdup(optarg) ;
+                                break ;
+                        case 'p':
+                                port = atoi(optarg) ;
+                                break ;
+                        case 'v':
+                                verbose_g ++ ;
+                                break ;
+                        case 'l':
+                                is_loop = 1 ;
+                                break ;
+                        case 's':
+                                is_server = 1 ;
+                                break ;
+                        default:
+                                printf(USAGE_MSG, PROG_NAME) ;
+                                return 0 ;
+                }
+        }
+        argc -= optind;
+        argv += optind;
+
+        if ( !port || 
+                (is_server && argc!=0) || 
+                !(is_server || argc==1 ) ||
+                !(is_server || host) ) {
+                        printf(USAGE_MSG, PROG_NAME) ;
+                        return 0 ;
+        }
+        if (argc) {
+                message = strdup(argv[0]) ;
+        }
+
+
+        if (is_server) {
+                // server 
+                sock = create_foo_socket(port) ;
+                do {
+                        n = socket_recvfrom(sock, buf, buf_size) ;
+                        socket_replyto(sock, buf, n) ;
+                } while (is_loop) ;
+        }
+        else {
+                // client
+                sock = create_foo_socket(0) ; // 0 so the socket will choose its own port number
+                assert(buf_size>=strlen(message)) ;
+                strcpy(buf,message) ;
+                socket_sendto(sock, host, port, buf, strlen(message)+1) ; // send the null
+                n = socket_recvfrom(sock, buf, buf_size) ;
+
+                // make sure it's a string
+                assert (!buf[n-1]) ;
+                printf("%s\n", buf) ;
+        }
+
+        return 0 ;
+}

@@ -1,0 +1,61 @@
+#
+# makefile for netbounce, object edition
+# last-update:
+#       27 jan 2022 -bjr
+#       31 jan 2023 -bjr
+#
+
+
+#MACHINE = localhost
+MACHINE = 54.87.208.83
+PORT = 3333
+
+
+MESSAGE= "The amazing net bounce!"
+VERBOSE= -v
+#VERBOSE=
+
+RED= \033[0;31m
+GREEN= \033[0;32m
+NC= \033[0m
+
+all:
+        @echo "*** Targets: build, clean, run-server, run-client."
+        @echo "*** To netbounce,"
+        @echo "    1) the server will run at ${RED}${MACHINE}:${PORT}${NC}."
+        @echo "    2) run ${GREEN}make run-server${NC} on ${MACHINE}."
+        @echo "    3) run ${GREEN}make run-client${NC} on a client."
+
+
+build:
+        make netbounce-oe
+
+netbounce-oe: netbounce-oe.c foo-socket.o foo-socket.h
+        cc -o $@ $< foo-socket.o
+
+foo-socket.o: foo-socket.c foo-socket.h
+        cc -c -o $@ $<
+
+
+## test
+
+
+run-server: netbounce-oe
+        ./netbounce-oe ${VERBOSE} -ls -p ${PORT}
+
+run-client: netbounce-oe
+        ./netbounce-oe ${VERBOSE} -p ${PORT} -h ${MACHINE}  ${MESSAGE}
+
+install-nettools:
+        sudo apt-get install net-tools
+
+find-pid:
+        @echo problem- bind: Address already in use
+        @echo use netstat to find the pid holding the port then kill -9
+        netstat -tulpn | grep ${PORT}
+
+tcpdump:
+        sudo tcpdump -i eth0 -X udp port ${PORT}
+
+clean:
+        -rm netbounce-oe foo-socket.o
