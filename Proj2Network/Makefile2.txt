@@ -1,0 +1,93 @@
+#
+# makefile for packet passaround
+#
+# list-update: 
+#               3 feb 2019 -bjr; created
+#               15 feb 2021 -bjr
+#               31 jan 2023 -bjr
+#
+
+#
+# public IP address of client and server EC instances
+# instances can share a security group, which include Inbound Rules:
+#
+#     Protocol: UPD Port Range: ${PORT} Source: ${MC}/32
+#     Protocol: UPD Port Range: ${PORT} Source: ${MS}/32
+#
+
+# set these to the IP address for test
+# make sure there is no trailing whitespace
+MC= 34.204.61.62 
+MS= 3.82.161.143 #vraj
+
+PORT= 3333
+
+RED= \033[0;31m
+GREEN= \033[0;32m
+NC= \033[0m
+
+all:
+        @echo "*** Targets: build, clean, test-local, test"
+
+build:
+        make passaround
+
+passaround: passaround.c passaround.h foo-socket.o foo-socket.h
+        cc -o $@ $< foo-socket.o
+
+foo-socket.o: foo-socket.c foo-socket.h
+        cc -c -o $@ $<
+
+test-local: passaround test-local-ref
+        ./passaround -n 3 -m localhost:localhost:localhost ${PORT} > test-local.out
+        diff test-local.ref test-local.out
+        cat test-local.out
+        @echo "${GREEN}*** Passed! ***${NC}"
+
+test:
+        @echo "*** To passaround between server and client,"
+        @echo "    1) the server is at ${RED}${MS}:${PORT}${NC}."
+        @echo "    1) the client is at ${RED}${MC}:${PORT}${NC}."
+        @echo "    2) run ${GREEN}make test-s${NC} on server."
+        @echo "    3) run ${GREEN}make test-c${NC} on a client."
+
+test-s: passaround test-ref
+        @echo Run this on ${MS}
+        @echo Then run make test-c on ${MC}
+        ./passaround -n 2 ${PORT} > test-s.out
+        diff test-s.ref test-s.out
+        cat test-s.out
+        @echo "${GREEN}*** Passed! ***${NC}"
+
+test-c: passaround test-ref
+        @echo First run make test-s on ${MS}
+        @echo The run this on ${MC}
+        ./passaround -n 3 -m ${MS}:${MC}:${MS}:${MC} ${PORT} > test-c.out
+        diff test-c.ref test-c.out
+        cat test-c.out
+        @echo "${GREEN}*** Passed! ***${NC}"
+
+test-ref:
+        @echo "S: ${MS}:${PORT} |${MC}:${MS}:${MC}|" > test-c.ref
+        @echo "R: ${MS}:${PORT} |${MS}:${MC}|" >> test-c.ref
+        @echo "S: ${MS}:${PORT} |${MC}|" >> test-c.ref
+        @echo "R: ${MS}:${PORT} ||" >> test-c.ref
+        @echo "R: ${MC}:${PORT} |${MC}:${MS}:${MC}|" > test-s.ref
+        @echo "S: ${MC}:${PORT} |${MS}:${MC}|" >> test-s.ref
+        @echo "R: ${MC}:${PORT} |${MC}|" >> test-s.ref
+        @echo "S: ${MC}:${PORT} ||" >> test-s.ref
+
+test-local-ref:
+        @echo "S: 127.0.0.1:${PORT} |localhost:localhost|" > test-local.ref
+        @echo "R: 127.0.0.1:${PORT} |localhost:localhost|" >> test-local.ref
+        @echo "S: 127.0.0.1:${PORT} |localhost|" >> test-local.ref
+        @echo "R: 127.0.0.1:${PORT} |localhost|" >> test-local.ref
+        @echo "S: 127.0.0.1:${PORT} ||" >> test-local.ref
+
+tcpdump:
+        sudo tcpdump -i eth0 -X udp port ${PORT}
+
+clean:
+        -rm passaround foo-socket.o
+        -rm test-local.out test-local.ref 
+        -rm test-s.out test-c.out test-c.ref test-s.ref

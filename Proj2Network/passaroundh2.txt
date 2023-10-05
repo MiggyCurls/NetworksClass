@@ -1,0 +1,13 @@
+/*
+** name: passaround.h
+**
+** author:
+** date:
+** last modified:
+**              31 jan 2023 bjr:
+**
+*/
+
+#define IF_VERBOSE if (verbose_g>0)
+#define STR_SEP ":"
+extern int verbose_g ;

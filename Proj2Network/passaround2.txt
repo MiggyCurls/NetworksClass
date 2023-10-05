@@ -1,0 +1,150 @@
+/*
+** name: passaround.c
+**
+** author: pikachu
+** last modified:
+**              15 feb 2021 bjr: from csc424-202/burt/proj2
+**              21 jan 2023 bjr; using foo-sockets
+**
+*/
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+#include<errno.h>
+#include<string.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
+#include<netdb.h>
+#include<assert.h>
+
+#include "foo-socket.h"
+#include "passaround.h"
+
+#define LOCALHOST "localhost"
+#define MAXMSGLEN 2048
+#define N_REPEAT_DEFAULT 1
+
+#define USAGE_MESSAGE "usage: passaround [-v] [-n num] [-m message] port"
+
+int verbose_g = 0 ;
+typedef struct{
+        char * first;
+        char * rest;
+}StringPair;
+StringPair parse(char * str, int sep){
+        StringPair sp;
+        char * c;
+
+        sp.first = str;
+        sp.rest = NULL;
+        c = strchr(str, sep);
+        if(c){
+                *c = '\0';
+                sp.rest = c+1;
+        }
+        return sp;
+}
+char * hostname_to_ipstring(char * hostname){
+        struct hostent *he;
+        if((he = gethostbyname(hostname)) == NULL){
+                printf("Error: Host does not exist%s\n",hostname);
+                exit(1);
+        }
+        return inet_ntoa(*((struct in_addr *)he->h_addr));
+}
+int main(int argc, char * argv[]) {
+        int ch ;
+        int the_port = 0 ;
+        int loop = 1 ;
+        int n_repeat = N_REPEAT_DEFAULT ;
+        char * msg = NULL ;
+        char * s ;
+        int is_forever = 0 ;
+        char buf[MAXMSGLEN] ;
+        struct FooSocket * sock ;
+        unsigned int addr_len, numbytes;
+        StringPair sp;
+        assert(sizeof(short)==2) ;
+
+        while ((ch = getopt(argc, argv, "vm:n:")) != -1) {
+                switch(ch) {
+                case 'n':
+                        n_repeat = atoi(optarg) ;
+                        break ;
+                case 'v':
+                        verbose_g += 1 ;
+                        break ;
+                case 'm':
+                        msg = strdup(optarg) ;
+                        break ;
+                case '?':
+                default:
+                        printf("%s\n",USAGE_MESSAGE) ;
+                        return 0 ;
+                }
+        }
+        argc -= optind;
+        argv += optind;
+
+        if ( argc!= 1 ) {
+                printf("%s\n",USAGE_MESSAGE) ;
+                exit(0) ;
+        }
+
+        the_port = atoi(*argv) ;
+        assert(the_port) ;
+
+        is_forever = (n_repeat == 0) ;
+
+        // create a socket and bind, assuming we have something to do
+        // have to set this up before the send, even if -m option, else
+        // the packet will be lost
+
+        sock = create_foo_socket(the_port) ;
+
+        if ( msg ) {
+
+                // parse and send
+                // and print S: host:port |message|
+                sp = parse(msg, ':');
+                if(sp.rest){
+                        s = sp.rest;
+                }else{
+                        s = "";
+                }
+                socket_sendto(sock, sp.first, the_port, s, strlen(s));
+                printf("S: %s:%d |%s|\n",hostname_to_ipstring(sp.first),the_port,s);
+                n_repeat-- ; // a packet sent
+        }
+
+        while( is_forever || n_repeat ) {
+
+                // listen for a packet
+                // print R: host:port |message|
+
+                // if something to send, {
+                //    parse and send
+                //    and print S: host:port |message|
+                // }
+                numbytes = socket_recvfrom(sock, buf, MAXMSGLEN-1);
+                buf[numbytes] = '\0';
+                printf("R: %s:%d |%s|\n",inet_ntoa(sock->replyto_addr->sin_addr),ntohs(sock->replyto_addr->sin_port),buf);
+                sp = parse(buf, ':');
+                if(sp.rest){
+                        s = sp.rest;
+                }else{
+                        s = "";
+                }
+
+                if(*buf){
+                        socket_sendto(sock, sp.first, the_port, s, strlen(s));
+                        printf("S: %s:%d |%s|\n", hostname_to_ipstring(sp.first), the_port, s);
+                }
+                n_repeat-- ;
+        }
+
+        return 0 ;
+}
